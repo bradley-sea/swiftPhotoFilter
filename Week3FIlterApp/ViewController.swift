@@ -10,7 +10,7 @@ import UIKit
 import Photos
 
 
-class ViewController: UIViewController, UINavigationControllerDelegate, UIImagePickerControllerDelegate, UIActionSheetDelegate,PhotoSelectedDelegate {
+class ViewController: UIViewController, UINavigationControllerDelegate, UIImagePickerControllerDelegate, UIActionSheetDelegate,PhotoSelectedDelegate, PHPhotoLibraryChangeObserver {
     
     @IBOutlet weak var photoButton: UIButton!
     
@@ -21,11 +21,16 @@ class ViewController: UIViewController, UINavigationControllerDelegate, UIImageP
        var actionController = UIAlertController(title: "", message: "", preferredStyle: UIAlertControllerStyle.ActionSheet)
     var adjustmentFormatterIdentifier = "com.example.filterapp.cf"
     var asset : PHAsset?
+    var placeHolderAsset : PHObjectPlaceholder?
+    var context = CIContext(options: nil)
     
     @IBOutlet weak var imageView: UIImageView!
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        PHPhotoLibrary.sharedPhotoLibrary().registerChangeObserver(self)
         self.setupActionController()
+        self.context = CIContext(options: nil)
         
         self.photoPicker.sourceType = UIImagePickerControllerSourceType.PhotoLibrary
         self.photoPicker.allowsEditing = true
@@ -78,6 +83,21 @@ class ViewController: UIViewController, UINavigationControllerDelegate, UIImageP
 
     @IBAction func applySepiaFilter(sender: AnyObject) {
         
+//        if self.asset == nil {
+//            
+//            PHPhotoLibrary.sharedPhotoLibrary().performChanges({
+//                
+//                var assetChangeRequest = PHAssetChangeRequest.creationRequestForAssetFromImage(self.imageView.image)
+//                self.placeHolderAsset = assetChangeRequest.placeholderForCreatedAsset
+//                
+//                
+//                }, completionHandler: { (success : Bool, error : NSError!) -> Void in
+//                    PHObjectPlaceholder
+//              
+//            })
+//            
+//        }
+        
         var options = PHContentEditingInputRequestOptions()
         options.canHandleAdjustmentData = {(data : PHAdjustmentData!) -> Bool in
         
@@ -99,12 +119,8 @@ class ViewController: UIViewController, UINavigationControllerDelegate, UIImageP
             var outputImage = filter.outputImage as CIImage
             
             //get the jpeg data
-            var context = CIContext(options: nil)
-            var cgimg = context.createCGImage(outputImage, fromRect: outputImage.extent())
-            
+            var cgimg = self.context.createCGImage(outputImage, fromRect: outputImage.extent())
             var finalImage = UIImage(CGImage: cgimg)
-        self.imageView.image = finalImage
-            
             var jpegData = UIImageJPEGRepresentation(finalImage, 0.8)
             
            
@@ -115,7 +131,7 @@ class ViewController: UIViewController, UINavigationControllerDelegate, UIImageP
 //            
             jpegData.writeToURL(contentEditingOutput.renderedContentURL, atomically: true)
             contentEditingOutput.adjustmentData = adjustmentData
-          
+        
             PHPhotoLibrary.sharedPhotoLibrary().performChanges({
                 
                 var request = PHAssetChangeRequest(forAsset: self.asset)
@@ -178,15 +194,46 @@ class ViewController: UIViewController, UINavigationControllerDelegate, UIImageP
     //MARK: PhotoSelectedDelegate
     func photoSelected(asset : PHAsset) -> Void {
         println("final step")
+         self.asset = asset
+        self.updateImage()
+//        var targetSize = CGSize(width: CGRectGetWidth(self.imageView.frame), height: CGRectGetHeight(self.imageView.frame))
+//        PHImageManager.defaultManager().requestImageForAsset(asset, targetSize: targetSize, contentMode: PHImageContentMode.AspectFill, options: nil) { (image, info) -> Void in
+//            
+//            self.imageView.image = image
+//            
+//            self.asset = asset
+//        }
+    }
+    
+    func updateImage() {
         
         var targetSize = CGSize(width: CGRectGetWidth(self.imageView.frame), height: CGRectGetHeight(self.imageView.frame))
-        PHImageManager.defaultManager().requestImageForAsset(asset, targetSize: targetSize, contentMode: PHImageContentMode.AspectFill, options: nil) { (image, info) -> Void in
-            
-            self.imageView.image = image
-            
-            self.asset = asset
+        //requesting the image for the asset
+        PHImageManager.defaultManager().requestImageForAsset(self.asset, targetSize: targetSize, contentMode: PHImageContentMode.AspectFill, options: nil) { (result : UIImage!, [NSObject : AnyObject]!) -> Void in
+            self.imageView.image = result
         }
-    }
 
+        
+    }
+    
+    func photoLibraryDidChange(changeInstance: PHChange!) {
+        
+        NSOperationQueue.mainQueue().addOperationWithBlock { () -> Void in
+            
+            if self.asset != nil {
+            var changeDetails = changeInstance.changeDetailsForObject(self.asset) as PHObjectChangeDetails!
+                if changeDetails != nil {
+                    self.asset = changeDetails.objectAfterChanges as? PHAsset
+                    
+                    if changeDetails.assetContentChanged {
+                        
+                        self.updateImage()
+                    }
+                }
+            
+            }
+        }
+        
+    }
 }
 
